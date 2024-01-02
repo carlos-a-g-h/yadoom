@@ -178,10 +178,6 @@ def update_programcfg()->bool:
 		if not len(data.keys())==0:
 			break
 
-	if not data:
-		print("Program config file not found")
-		return False
-
 	if not data.get("path_port"):
 
 		if sys_platform=="linux":
