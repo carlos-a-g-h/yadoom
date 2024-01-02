@@ -1,6 +1,7 @@
 #!/usr/bin/python3.9
 
 # import json
+import logging
 import subprocess
 
 from pathlib import Path
@@ -13,8 +14,12 @@ import yaml
 # from textual.app import App
 # from textual.widgets import Footer, Header
 
-_sample_game="""
-# Redirect this to a YAML file
+_cached_config={}
+_cached_game={}
+_cached_gameslist=[]
+
+
+_game_example_yml="""
 # This line is a comment in YAML btw
 
 # Name of the game
@@ -37,16 +42,10 @@ file(s):
 # Relative paths can also be used: they are attached to the program's directory
 """
 
-_config_program={}
-
-_current_game={}
-
-_list_of_games=[]
-
 def argument_parser(action:str)->dict:
 
-	pieces=sys_argv[2:]
-	pieces_len=len(pieces)
+	argparts=sys_argv[2:]
+	pieces_len=len(argparts)
 
 	actions_valid={
 		"run":["-i","-f"],
@@ -59,17 +58,17 @@ def argument_parser(action:str)->dict:
 		if not idx+1<pieces_len:
 			break
 
-		key=pieces[idx]
-		value=pieces[idx+1]
+		key=argparts[idx].strip().lower()
+		value=argparts[idx+1]
 
 		idx=idx+2
 
 		if key in params.keys():
-			print(key,": already gotten")
+			print(key,": already exists")
 			continue
 
 		if key not in actions_valid[action]:
-			print(key,": ")
+			print(key,": not valid")
 			break
 
 		if action=="run":
@@ -81,6 +80,56 @@ def argument_parser(action:str)->dict:
 
 	return params
 
+def yaml_read(filepath=None,text=None):
+
+	has_file=(not (not filepath))
+	has_text=(not (not text))
+
+	content=None
+	if (not has_file) and has_text:
+		content=text
+	if has_file and (not has_text):
+		content=filepath.read_text()
+
+	if not content:
+		return {}
+
+	data=yaml.load(
+		content,
+		Loader=yaml.Loader
+	)
+
+	# except Exception as e:
+	# 	logging.exception("FUCK")
+	# 	print(
+	# 		"YAML read error"
+	# 		f"\n\tFile: {str(filepath)}"
+	# 		f"\n\tError: {str(e)}"
+	# 	)
+	# 	return {}
+
+	return data
+
+def yaml_write(filepath,data)->bool:
+	# try:
+	filepath.write_text(
+		yaml.dump(
+			_cached_game,
+			sort_keys=False
+		)
+	)
+	# except Exception as e:
+	# 	logging.exception("FUCK")
+	# 	print(
+	# 		"YAML write error"
+	# 		f"\n\tFile: {str(filepath)}"
+	# 		f"\n\tData: {data}"
+	# 		f"\n\tError: {str(e)}"
+	# 	)
+	# 	return False
+
+	return True
+
 def get_path_real(fse):
 	if fse.is_absolute():
 		return fse
@@ -88,11 +137,6 @@ def get_path_real(fse):
 	return Path(sys_argv[0]).parent.joinpath(fse)
 
 def get_path_port():
-
-	path_port=_config_program.get("path_port")
-	if path_port is not None:
-		if path_port.exists():
-			return path_port
 
 	if sys_platform=="linux":
 
@@ -106,82 +150,109 @@ def get_path_port():
 		if path_port is not None:
 			return path_port
 
-		path_port_local=Path(sys_argv[0]).parent.joinpath("gzdoom")
-		if path_port_local.exists():
-			if path_port_local.is_file():
-				return path_port_local
-
-	if sys_platform=="windows":
-		path_port_local=Path(sys_argv[0]).parent.joinpath("gzdoom.exe")
-		if path_port_local.exists():
-			if path_port_local.is_file():
-				return path_port_local
+	path_port=Path(_cached_config.get("path_port"))
+	if path_port is not None:
+		if path_port.exists():
+			return path_port
 
 	return None
 
-def get_games(force:bool=False)->int:
+def update_programcfg()->bool:
+	path_prog=Path(sys_argv[0])
 
-	if not (len(_list_of_games)==0 or force):
-		return len(_list_of_games)
+	possible_matches=(
+		f"{path_prog.stem}.yaml",
+		f"{path_prog.stem}.yml"
+	)
+
+	data={}
+
+	for fse in path_prog.parent.iterdir():
+		if not fse.is_file():
+			continue
+		if fse.name.lower() not in possible_matches:
+			continue
+
+		data.update(yaml_read(filepath=fse))
+
+		if not len(data.keys())==0:
+			break
+
+	if not data:
+		print("Program config file not found")
+		return False
+
+	if not data.get("path_port"):
+
+		if sys_platform=="linux":
+			print("WARNING: 'path_port' is missing")
+
+		if sys_platform=="win32":
+			print("ERROR: 'path_port' is missing")
+			return False
+
+	_cached_config.update(data)
+
+	return True
+
+def update_gameslist(force:bool=False)->int:
+
+	if not (len(_cached_gameslist)==0 or force):
+		return len(_cached_gameslist)
 
 	if force:
-		if len(_list_of_games)>0:
-			_list_of_games.clear()
+		if len(_cached_gameslist)>0:
+			_cached_gameslist.clear()
+
+	path_games=Path(sys_argv[0]).parent.joinpath("games")
+	if not path_games.is_dir():
+		return []
 
 	games=[]
-
-	for fse in Path(sys_argv[0]).parent.iterdir():
+	for fse in path_games.iterdir():
 		if not fse.is_file():
 			continue
 		if fse.suffix.lower() not in (".yaml",".yml"):
 			continue
 		if fse.stat().st_size>1024*32:
 			continue
-		if not game_yaml_to_data(fse.read_text()):
+		if not game_yaml_to_data(fse):
 			continue
 		games.append(fse)
 
 	if len(games)>1:
 		games.sort()
 
-	_list_of_games.extend(games)
-	return len(_list_of_games)
+	_cached_gameslist.extend(games)
+	return len(_cached_gameslist)
 
 def get_game_by_index(index:int):
 
-	if len(_list_of_games)==0:
-		get_games()
+	if len(_cached_gameslist)==0:
+		update_gameslist()
 
-	if index>len(_list_of_games)-1:
+	if index>len(_cached_gameslist)-1:
 		return None
 
-	return _list_of_games[index]
+	return _cached_gameslist[index]
 
 def game_data_to_yaml(fse)->bool:
 
-	key_name=_current_game.get("name",None)
-	key_iwad=_current_game.get("iwad",None)
+	key_name=_cached_game.get("name",None)
+	key_iwad=_cached_game.get("iwad",None)
 	if not key_name:
 		return False
 	if not key_iwad:
 		return False
 
-	fse.write_text(
-		yaml.dump(
-			_current_game,
-			sort_keys=False
-		)
-	)
-	return True
+	return yaml_write()
 
-def game_yaml_to_data(text:str)->dict:
-	data={}
-	try:
-		data.update(yaml.load(stream=text,Loader=yaml.Loader))
-		assert data.get("name",None)
-		assert data.get("iwad",None)
-	except Exception as e:
-		print(str(e))
+def game_yaml_to_data(fse)->dict:
+
+	data=yaml_read(filepath=fse)
+	if not data.get("name",None):
+		return {}
+	if not data.get("iwad",None):
 		return {}
 
 	return data
@@ -190,13 +261,19 @@ def game_yaml_to_data_global(text:str)->bool:
 
 	data=game_yaml_to_data(text)
 
-	if len(_current_game.keys())>0:
-		_current_game.clear()
+	if len(_cached_game.keys())>0:
+		_cached_game.clear()
 
-	_current_game.update(data)
+	_cached_game.update(data)
 	return True
 
-def run_zdoom(path_zdoom,path_iwad,path_savedir,path_config,list_files=[]):
+def run_zdoom(
+		path_zdoom,
+		path_iwad,
+		path_savedir,
+		path_config,
+		list_files=[]
+	):
 
 	print(f"\nRunning: {path_zdoom.name}\n\tIWAD:\n\t\t{str(path_iwad)}")
 	cmd_line=[
@@ -225,7 +302,8 @@ def main_run(fse_game):
 		return False
 
 	path_progdir=Path(sys_argv[0]).parent
-	path_gamedir=path_progdir.joinpath(fse_game.stem)
+	path_games=path_progdir.joinpath("games")
+	path_gamedir=path_games.joinpath(fse_game.stem)
 	path_savedir=path_gamedir.joinpath("savegames")
 	path_config=path_gamedir.joinpath("config.ini")
 
@@ -244,18 +322,17 @@ def main_run(fse_game):
 				)
 
 	if not path_config.exists():
-		print("Unable to find a config file")
-		return False
+		print("WARNING: No config file was found, the game will use the default config provided by the source port")
 
-	if not _current_game:
-		if not game_yaml_to_data_global(fse_game.read_text()):
+	if not _cached_game:
+		if not game_yaml_to_data_global(fse_game):
 			print("Unable to read game file:",fse_game.name)
 			return False
-	path_iwad=get_path_real(Path(_current_game["iwad"]))
+	path_iwad=get_path_real(Path(_cached_game["iwad"]))
 
 	the_list=[]
-	if "file(s)" in _current_game.keys():
-		for fse_str in _current_game["file(s)"]:
+	if "file(s)" in _cached_game.keys():
+		for fse_str in _cached_game["file(s)"]:
 			the_list.append(
 				get_path_real(Path(fse_str))
 			)
@@ -284,8 +361,9 @@ if __name__=="__main__":
 			"\n- ui: User interface"
 			"\n- list: Lists available games"
 			"\n- run: Runs a game"
-			"\n- help-program: Prints a sample config file for the program's configuration (in JSON)"
+			"\n- help-program: Prints a sample config file for the program's configuration (in YAML)"
 			"\n- help-game: Prints sample game file (in YAML)"
+			"\n\nWritten by Carlos Alberto González Hernández (2024-01-02)"
 		)
 
 		sys_exit(0)
@@ -297,7 +375,17 @@ if __name__=="__main__":
 		sys_exit(0)
 
 	if action=="help-game":
-		print(_sample_game)
+		path_sample=Path(sys_argv[0]).parent.joinpath("games/example.yml")
+
+		if not path_sample.parent.exists():
+			path_sample.parent.mkdir()
+
+		if not path_sample.parent.is_dir():
+			print(f"The path\n\t{str(path_sample.parent)}\nis not a directory")
+			sys_exit(0)
+
+		print(f"Saved sample game file to:\n\t{str(path_sample)}")
+		path_sample.write_text(_game_example_yml)
 		sys_exit(0)
 
 	if action=="ui":
@@ -307,15 +395,15 @@ if __name__=="__main__":
 
 	if action=="list":
 
-		qtty=get_games()
+		qtty=update_gameslist()
 		if qtty==0:
 			print("You have no games")
-			sys_exit(0)
+			sys_exit(1)
 
 		count=0
 		print("Index\tName")
-		for fse in _list_of_games:
-			print(f"{count}\t"+game_yaml_to_data(fse.read_text())["name"])
+		for fse in _cached_gameslist:
+			print(f"{count}\t"+yaml_read(filepath=fse)["name"])
 			count=count+1
 
 		sys_exit(0)
@@ -332,6 +420,10 @@ if __name__=="__main__":
 				"\n\n-f FILEPATH\n\tYML Game file"
 			)
 			sys_exit(0)
+
+		if not update_programcfg():
+			print("Failed to load program configuration")
+			sys_exit(1)
 
 		args=argument_parser(action)
 		if not args:
