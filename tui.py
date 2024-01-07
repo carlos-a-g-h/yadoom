@@ -12,17 +12,25 @@ from textual.containers import Container,Horizontal
 from textual.widgets import Button,Label,Select,Static
 from textual_fspicker import FileOpen,Filters
 
+from internals import cached_config_get
 from internals import get_list_of_places
 from internals import get_path_program
 from internals import get_sys_platform
 
-def only_when_its_dark():
+def determine_style()->bool:
+	pref=cached_config_get("force-style")
+	# if isinstance(preferred,str):
+	if type(pref) is str:
+		print(pref)
+		if pref.strip().lower()=="dk":
+			return True
+		if pref.strip().lower()=="lt":
+			return False
+
 	h=datetime.now().hour
 	return (h<7 or h>18)
 
 class UI_SetupSourcePortNOW(App):
-
-	TITLE="YAZDOOM"
 
 	CSS="""
 	Button,Container,Input,Label,Select,#selected_path { margin:2; }
@@ -36,13 +44,13 @@ class UI_SetupSourcePortNOW(App):
 	# */
 	# """
 
-	dark=only_when_its_dark()
+	# dark=determine_style()
 
 	path_program=get_path_program()
 	path_cached=path_program.parent
 	path_selected=None
 
-	def get_places(self):
+	def get_places(self)->list:
 		places=get_list_of_places()
 		platform=get_sys_platform()
 		if platform=="linux":
@@ -53,7 +61,7 @@ class UI_SetupSourcePortNOW(App):
 			])
 		return places
 
-	def save_selected(self,filepath):
+	def save_selected(self,filepath:Path):
 		if not filepath:
 			return
 
@@ -74,8 +82,9 @@ class UI_SetupSourcePortNOW(App):
 		return True
 
 	def compose(self)->ComposeResult:
+		self.dark=determine_style()
 		yield Label(
-			"The ZDoom/GZDoom executable was not found in the config"
+			"[b]YAZDOOM[/b]\n\nThe ZDoom/GZDoom executable was not found in the config"
 		)
 		yield Horizontal(
 			Select.from_values(

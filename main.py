@@ -15,7 +15,7 @@ from internals import get_path_srcport
 from internals import get_path_real
 from internals import program_config_read
 from internals import program_config_write
-from internals import update_cached_config
+from internals import cached_config_update
 # from internals import update_gameslist
 from internals import util_yaml_read
 # from internals import util_yaml_write
@@ -197,125 +197,6 @@ def main_run(fse_game,path_srcport):
 
 	return return_code==0
 
-# def validate_filepath(path):
-# 	if not path:
-# 		return False
-# 	if not path.is_file():
-# 		return False
-# 	if path.absolute()==Path(sys_argv[0]).absolute():
-# 		return False
-# 	return True
-
-# class Validator_Filepath(Validator):
-# 	def validate(self,value:str)->ValidationResult:
-
-# 		if not validate_filepath(Path(value)):
-# 			return self.failure("The file does not exist")
-
-# 		return self.success()
-
-# class QuickForm_SourcePort(App):
-
-# 	CSS="Label,Input,Button,Select { margin:1 }\n#cancel { dock:right; }"
-
-# 	path_last_visited=Path(sys_argv[0]).parent
-# 	path_selected=None
-
-# 	def compose(self)->ComposeResult:
-# 		yield Label(
-# 			"There is no source port to be found!\
-# 			\nGo find it somewhere on the computer or type the path yourself by hand"
-# 		)
-# 		with Horizontal():
-# 			yield Select.from_values(
-# 				get_places(),
-# 				prompt="Select where to open the picker"
-# 			)
-# 			yield Button(label="Open",id="search")
-
-# 		yield Input(
-# 			placeholder="Path to ZDoom/GZDoom executable",
-# 			validators=[Validator_Filepath()],
-# 			validate_on=["submitted"],
-# 		)
-
-# 		with Horizontal():
-# 			yield Button(label="Confirm",id="accept")
-# 			yield Button(label="Exit",id="cancel")
-
-# 	def save_selected_path(self,filepath):
-# 		if not filepath:
-# 			return
-
-# 		self.path_selected=filepath
-# 		self.path_last_visited=filepath.parent
-
-# 		widget_input=self.query_one(Input)
-# 		widget_input.clear()
-# 		widget_input.insert_text_at_cursor(str(filepath))
-
-# 	@on(Button.Pressed,"#search")
-# 	def form_openfile(self):
-# 		start_point=self.query_one(Select).value
-# 		if start_point==Select.BLANK:
-# 			start_point=self.path_last_visited
-
-# 		the_filters={
-# 			True:Filters(
-# 				("Windows executable",lambda p:p.suffix.lower()==".exe")
-# 			),
-# 			False:None
-# 		}[sys_platform=="win32"]
-
-# 		self.push_screen(
-# 			FileOpen(
-# 				start_point,
-# 				filters=the_filters
-# 			),
-# 			callback=self.save_selected_path
-# 		)
-
-# 	@on(Button.Pressed,"#accept")
-# 	def form_proceed(self):
-# 		if not validate_filepath(self.path_selected):
-# 			self.notify("The given path is not valid")
-# 			return
-
-# 		self.exit(self.path_selected)
-
-# 	@on(Button.Pressed,"#cancel")
-# 	def form_bail(self):
-# 		self.exit()
-
-# def launch_quickform_sourceport():
-# 	path_source_port=QuickForm_SourcePort().run()
-# 	if not path_source_port:
-# 		return False
-
-# 	_cached_config.update({"path_port":path_source_port})
-
-# 	data_ok={}
-
-# 	for key in _cached_config.keys():
-# 		if type(_cached_config[key]) is not str:
-# 			data_ok.update({key:str(_cached_config[key])})
-# 			continue
-
-# 		data_ok.update({key:_cached_config[key]})
-
-# 	path_program=Path(sys_argv[0])
-
-# 	try:
-# 		util_yaml_write(
-# 			path_program.parent.joinpath(f"{path_program.stem}.yaml"),
-# 			data_ok
-# 		)
-# 	except Exception as e:
-# 		print("WARNING: Failed to write the new config file;",str(e))
-# 		pass
-
-# 	return True
-
 if __name__=="__main__":
 
 	binary=Path(sys_argv[0].strip()).name
@@ -402,6 +283,7 @@ if __name__=="__main__":
 
 		update_config_at_the_end=False
 		path_srcport=get_path_srcport()
+
 		if not path_srcport:
 			path_srcport_str=UI_SetupSourcePortNOW().run()
 			if not path_srcport_str:
@@ -411,7 +293,7 @@ if __name__=="__main__":
 			path_srcport=Path(path_srcport_str)
 
 			update_config_at_the_end=True
-			update_cached_config({"path_srcport":str(path_srcport)})
+			cached_config_update({"path-srcport":str(path_srcport)})
 
 		print(f"Path to source port:\n\t{path_srcport}")
 
