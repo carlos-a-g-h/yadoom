@@ -14,10 +14,13 @@ _cached_config={}
 _cached_game={}
 _cached_state={}
 
-def update_cached_config(data,clear_first=False):
+def cached_config_update(data,clear_first=False):
 	if clear_first:
 		_cached_config.clear()
 	_cached_config.update(data)
+
+def cached_config_get(target):
+	return _cached_config.get(target)
 
 def get_sys_argv()->list:
 	return sys_argv
@@ -200,6 +203,8 @@ def program_config_read():
 		util_yaml_read(filepath=path_config)
 	)
 
+	print(f"\nProgram config:\n\t{_cached_config}")
+
 def program_config_write():
 
 	print(f"Updating program configuration:\n{_cached_config}")
@@ -214,13 +219,17 @@ def program_config_write():
 
 def get_path_srcport()->Path:
 
-	path_srcport_str=_cached_config.get("path_srcport")
+	path_srcport_str=_cached_config.get("path-srcport")
 	if isinstance(path_srcport_str,str):
 		path_program_dir=get_path_program().parent
-		return get_path_real(
+		path_srcport=get_path_real(
 			path_program_dir,
 			Path(path_srcport_str)
 		)
+		if not path_srcport.is_file():
+			return None
+
+		return path_srcport
 
 	return None
 

@@ -1,1 +1,2 @@
-path_srcport: /usr/games/gzdoom
+path-srcport: /usr/games/gzdoom
+force-style: dk
